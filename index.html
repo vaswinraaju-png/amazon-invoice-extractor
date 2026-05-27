@@ -510,30 +510,55 @@
   });
 
   // ── EXTRACT ───────────────────────────────────────────────────────────────
+  // Batch extract: 20 PDFs per request to stay under Vercel 4.5MB limit
+  const BATCH_SIZE = 20;
+
+  function chunkArray(arr, size) {
+    const chunks = [];
+    for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+    return chunks;
+  }
+
   extractBtn.addEventListener("click", async () => {
     if (!files.length) return;
 
     extractBtn.disabled = true;
     clearBtn.disabled   = true;
     progressWrap.style.display = "block";
-    progressBar.style.width = "10%";
-    progressLabel.textContent = `Uploading ${files.length} invoice${files.length > 1 ? "s" : ""}...`;
+    progressBar.style.width = "0%";
+    progressBar.style.background = "var(--lime)";
 
-    const formData = new FormData();
-    files.forEach(f => formData.append("files", f));
+    const batches   = chunkArray(files, BATCH_SIZE);
+    const allData   = [];
+    const allErrors = [];
+    let   done      = 0;
 
     try {
-      progressBar.style.width = "40%";
-      const res = await fetch("/api/extract", { method: "POST", body: formData });
-      progressBar.style.width = "80%";
+      for (let b = 0; b < batches.length; b++) {
+        const batch = batches[b];
+        progressLabel.textContent =
+          `Batch ${b + 1} of ${batches.length} — processing ${batch.length} invoices...`;
 
-      if (!res.ok) throw new Error(`Server error: ${res.status}`);
-      const json = await res.json();
-      progressBar.style.width = "100%";
-      progressLabel.textContent = "Done!";
+        const formData = new FormData();
+        batch.forEach(f => formData.append("files", f));
 
-      extractedData = json.data || [];
-      renderResults(json);
+        const res = await fetch("/api/extract", { method: "POST", body: formData });
+        if (!res.ok) throw new Error(`Server error: ${res.status} on batch ${b + 1}`);
+
+        const json = await res.json();
+        allData.push(...(json.data   || []));
+        allErrors.push(...(json.errors || []));
+
+        done += batch.length;
+        progressBar.style.width = Math.round((done / files.length) * 100) + "%";
+      }
+
+      progressBar.style.width  = "100%";
+      const nb = batches.length;
+      progressLabel.textContent = `Done! Processed ${allData.length} invoices across ${nb} batch${nb > 1 ? "es" : ""}.`;
+
+      extractedData = allData;
+      renderResults({ data: allData, errors: allErrors });
 
     } catch (err) {
       progressLabel.textContent = "Error: " + err.message;
