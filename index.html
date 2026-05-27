@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Invoice Extractor — storiesbyachu</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:       #0a0a0a;
+    --surface:  #111111;
+    --border:   #222222;
+    --lime:     #C5FF00;
+    --lime-dim: #8fb300;
+    --text:     #e8e8e8;
+    --muted:    #666666;
+    --error:    #ff4444;
+    --success:  #00cc66;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Manrope', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    padding: 0 0 80px;
+  }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 100;
+  }
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 2px;
+    color: var(--lime);
+  }
+  .logo span { color: var(--muted); font-size: 13px; font-family: 'Manrope', sans-serif; letter-spacing: 0; margin-left: 12px; font-weight: 500; }
+  .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 2px;
+  }
+
+  /* ── MAIN LAYOUT ── */
+  main { max-width: 1100px; margin: 0 auto; padding: 40px 32px 0; }
+
+  h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(36px, 5vw, 56px);
+    letter-spacing: 3px;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  h1 em { color: var(--lime); font-style: normal; }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 40px;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── DROP ZONE ── */
+  #dropzone {
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    padding: 60px 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+    background: var(--surface);
+  }
+  #dropzone:hover, #dropzone.dragover {
+    border-color: var(--lime);
+    background: #111a00;
+  }
+  #dropzone input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%;
+  }
+  .drop-icon {
+    font-size: 40px;
+    margin-bottom: 16px;
+    display: block;
+  }
+  .drop-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 24px;
+    letter-spacing: 2px;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+  .drop-sub {
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .drop-sub strong { color: var(--lime); }
+
+  /* ── FILE LIST ── */
+  #file-list {
+    margin-top: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .file-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 6px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .file-chip .remove {
+    color: var(--error);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .file-chip .remove:hover { opacity: 0.7; }
+
+  /* ── ACTIONS ── */
+  .actions {
+    margin-top: 24px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .btn {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 16px;
+    letter-spacing: 1.5px;
+    padding: 12px 28px;
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+  .btn-primary { background: var(--lime); color: #0a0a0a; }
+  .btn-primary:hover:not(:disabled) { opacity: 0.88; }
+  .btn-outline {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-outline:hover:not(:disabled) { border-color: var(--lime); color: var(--lime); }
+  .btn-outline.active { border-color: var(--lime); color: var(--lime); }
+
+  #file-count {
+    color: var(--muted);
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── PROGRESS ── */
+  #progress-wrap {
+    margin-top: 24px;
+    display: none;
+  }
+  .progress-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--lime);
+    margin-bottom: 8px;
+  }
+  .progress-bar-bg {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    height: 6px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--lime);
+    width: 0%;
+    transition: width 0.3s;
+    border-radius: 2px;
+  }
+
+  /* ── STATS ROW ── */
+  #stats-row {
+    margin-top: 32px;
+    display: none;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px 24px;
+    flex: 1;
+    min-width: 140px;
+  }
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .stat-value {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 36px;
+    letter-spacing: 1px;
+    color: var(--lime);
+    line-height: 1;
+  }
+  .stat-value.red { color: var(--error); }
+
+  /* ── TABLE ── */
+  #table-wrap {
+    margin-top: 32px;
+    display: none;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  thead tr {
+    background: #161616;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    padding: 12px 14px;
+    text-align: left;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    white-space: nowrap;
+    font-family: 'Manrope', sans-serif;
+    font-weight: 600;
+  }
+  tbody tr {
+    border-bottom: 1px solid #181818;
+    transition: background 0.1s;
+  }
+  tbody tr:hover { background: #141400; }
+  td {
+    padding: 10px 14px;
+    color: var(--text);
+    white-space: nowrap;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  td.lime { color: var(--lime); }
+  td.muted { color: var(--muted); }
+  td.empty { color: #333; }
+
+  /* ── DOWNLOAD BAR ── */
+  #download-bar {
+    margin-top: 20px;
+    display: none;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  #download-bar .label {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── ERROR SECTION ── */
+  #error-section {
+    margin-top: 24px;
+    display: none;
+  }
+  .error-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: 1px;
+    color: var(--error);
+    margin-bottom: 12px;
+  }
+  .error-item {
+    background: #1a0000;
+    border: 1px solid #330000;
+    border-radius: 2px;
+    padding: 10px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--error);
+    margin-bottom: 6px;
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    margin-top: 60px;
+    border-top: 1px solid var(--border);
+    padding: 20px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: gap;
+  }
+  footer span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #333;
+  }
+  footer a { color: var(--lime); text-decoration: none; }
+
+  @media (max-width: 600px) {
+    main { padding: 24px 16px 0; }
+    header { padding: 16px; }
+    .actions { flex-direction: column; align-items: stretch; }
+    .btn { text-align: center; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <span class="logo">INVOICE EXTRACTOR <span>by storiesbyachu</span></span>
+  </div>
+  <div class="badge">AMAZON SP · DIABLISS</div>
+</header>
+
+<main>
+  <h1>EXTRACT<br /><em>INVOICE</em> DATA</h1>
+  <p class="subtitle">Drop Amazon invoice PDFs · Extract all fields · Download Excel or CSV</p>
+
+  <!-- DROP ZONE -->
+  <div id="dropzone">
+    <input type="file" id="file-input" multiple accept=".pdf" />
+    <span class="drop-icon">📄</span>
+    <div class="drop-title">DROP INVOICES HERE</div>
+    <p class="drop-sub">or click to browse &nbsp;·&nbsp; <strong>PDF files only</strong> &nbsp;·&nbsp; batch upload supported</p>
+  </div>
+
+  <div id="file-list"></div>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="extract-btn" disabled>EXTRACT DATA</button>
+    <button class="btn btn-outline" id="clear-btn" disabled>CLEAR</button>
+    <span id="file-count"></span>
+  </div>
+
+  <!-- PROGRESS -->
+  <div id="progress-wrap">
+    <div class="progress-label" id="progress-label">Uploading...</div>
+    <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-bar"></div></div>
+  </div>
+
+  <!-- STATS -->
+  <div id="stats-row" style="display:none; flex-wrap:wrap; gap:16px; margin-top:32px;">
+    <div class="stat-card">
+      <div class="stat-label">Extracted</div>
+      <div class="stat-value" id="stat-extracted">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Errors</div>
+      <div class="stat-value red" id="stat-errors">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Amount</div>
+      <div class="stat-value" id="stat-total">₹0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Unique States</div>
+      <div class="stat-value" id="stat-states">0</div>
+    </div>
+  </div>
+
+  <!-- DOWNLOAD BAR -->
+  <div id="download-bar">
+    <span class="label">DOWNLOAD AS</span>
+    <button class="btn btn-outline" id="dl-excel">EXCEL (.xlsx)</button>
+    <button class="btn btn-outline" id="dl-csv">CSV</button>
+  </div>
+
+  <!-- TABLE -->
+  <div id="table-wrap">
+    <table>
+      <thead>
+        <tr id="table-head"></tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+
+  <!-- ERRORS -->
+  <div id="error-section">
+    <div class="error-title">FAILED FILES</div>
+    <div id="error-list"></div>
+  </div>
+</main>
+
+<footer>
+  <span>storiesbyachu · Vortex Labs · <a href="mailto:v.aswinraaju@gmail.com">v.aswinraaju@gmail.com</a></span>
+  <span id="ts"></span>
+</footer>
+
+<!-- SheetJS for Excel export -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script>
+  // ── STATE ────────────────────────────────────────────────────────────────
+  let files = [];
+  let extractedData = [];
+
+  const COLUMNS = [
+    "file","order_id","invoice_id","invoice_date",
+    "customer_name","billing_city","billing_state","billing_pincode",
+    "shipping_city","shipping_pincode",
+    "product_name","sku","asin","qty","unit_price",
+    "taxable_amount","cgst","sgst","igst","total_amount",
+    "payment_mode","buyer_gstin","seller_gstin"
+  ];
+
+  const COL_LABELS = {
+    file:"File", order_id:"Order ID", invoice_id:"Invoice ID", invoice_date:"Date",
+    customer_name:"Customer", billing_city:"City", billing_state:"State", billing_pincode:"PIN",
+    shipping_city:"Ship City", shipping_pincode:"Ship PIN",
+    product_name:"Product", sku:"SKU", asin:"ASIN", qty:"Qty", unit_price:"Unit Price",
+    taxable_amount:"Taxable", cgst:"CGST", sgst:"SGST", igst:"IGST", total_amount:"Total",
+    payment_mode:"Payment", buyer_gstin:"Buyer GSTIN", seller_gstin:"Seller GSTIN"
+  };
+
+  // ── ELEMENTS ─────────────────────────────────────────────────────────────
+  const dropzone    = document.getElementById("dropzone");
+  const fileInput   = document.getElementById("file-input");
+  const fileList    = document.getElementById("file-list");
+  const extractBtn  = document.getElementById("extract-btn");
+  const clearBtn    = document.getElementById("clear-btn");
+  const fileCount   = document.getElementById("file-count");
+  const progressWrap = document.getElementById("progress-wrap");
+  const progressBar  = document.getElementById("progress-bar");
+  const progressLabel= document.getElementById("progress-label");
+
+  // ── DRAG & DROP ───────────────────────────────────────────────────────────
+  dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("dragover"); });
+  dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+  dropzone.addEventListener("drop", e => {
+    e.preventDefault();
+    dropzone.classList.remove("dragover");
+    addFiles([...e.dataTransfer.files]);
+  });
+  fileInput.addEventListener("change", () => addFiles([...fileInput.files]));
+
+  function addFiles(newFiles) {
+    newFiles.filter(f => f.type === "application/pdf").forEach(f => {
+      if (!files.find(x => x.name === f.name)) files.push(f);
+    });
+    renderFileList();
+  }
+
+  function renderFileList() {
+    fileList.innerHTML = files.map((f, i) => `
+      <div class="file-chip">
+        ${f.name}
+        <span class="remove" data-i="${i}">✕</span>
+      </div>
+    `).join("");
+    fileList.querySelectorAll(".remove").forEach(el =>
+      el.addEventListener("click", () => { files.splice(+el.dataset.i, 1); renderFileList(); })
+    );
+    const n = files.length;
+    fileCount.textContent = n ? `${n} file${n > 1 ? "s" : ""} selected` : "";
+    extractBtn.disabled = n === 0;
+    clearBtn.disabled   = n === 0;
+  }
+
+  clearBtn.addEventListener("click", () => {
+    files = [];
+    extractedData = [];
+    fileInput.value = "";
+    renderFileList();
+    document.getElementById("stats-row").style.display = "none";
+    document.getElementById("table-wrap").style.display = "none";
+    document.getElementById("download-bar").style.display = "none";
+    document.getElementById("error-section").style.display = "none";
+    progressWrap.style.display = "none";
+  });
+
+  // ── EXTRACT ───────────────────────────────────────────────────────────────
+  extractBtn.addEventListener("click", async () => {
+    if (!files.length) return;
+
+    extractBtn.disabled = true;
+    clearBtn.disabled   = true;
+    progressWrap.style.display = "block";
+    progressBar.style.width = "10%";
+    progressLabel.textContent = `Uploading ${files.length} invoice${files.length > 1 ? "s" : ""}...`;
+
+    const formData = new FormData();
+    files.forEach(f => formData.append("files", f));
+
+    try {
+      progressBar.style.width = "40%";
+      const res = await fetch("/api/extract", { method: "POST", body: formData });
+      progressBar.style.width = "80%";
+
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      const json = await res.json();
+      progressBar.style.width = "100%";
+      progressLabel.textContent = "Done!";
+
+      extractedData = json.data || [];
+      renderResults(json);
+
+    } catch (err) {
+      progressLabel.textContent = "Error: " + err.message;
+      progressBar.style.background = "var(--error)";
+    } finally {
+      extractBtn.disabled = false;
+      clearBtn.disabled   = false;
+    }
+  });
+
+  // ── RENDER RESULTS ────────────────────────────────────────────────────────
+  function renderResults(json) {
+    const data   = json.data   || [];
+    const errors = json.errors || [];
+
+    // Stats
+    const totalAmt = data.reduce((s, r) => s + parseFloat((r.total_amount || "0").replace(/,/g,"")) || 0, 0);
+    const states   = new Set(data.map(r => r.billing_state).filter(Boolean)).size;
+
+    document.getElementById("stat-extracted").textContent = data.length;
+    document.getElementById("stat-errors").textContent    = errors.length;
+    document.getElementById("stat-total").textContent     = "₹" + totalAmt.toLocaleString("en-IN");
+    document.getElementById("stat-states").textContent    = states;
+    document.getElementById("stats-row").style.display    = "flex";
+
+    // Table
+    if (data.length) {
+      const head = document.getElementById("table-head");
+      head.innerHTML = COLUMNS.map(c => `<th>${COL_LABELS[c] || c}</th>`).join("");
+
+      const body = document.getElementById("table-body");
+      body.innerHTML = data.map(row => `
+        <tr>
+          ${COLUMNS.map(c => {
+            const v = row[c] || "";
+            const cls = c === "order_id" ? "lime" : !v ? "empty muted" : "";
+            return `<td class="${cls}" title="${v}">${v || "—"}</td>`;
+          }).join("")}
+        </tr>
+      `).join("");
+
+      document.getElementById("table-wrap").style.display = "block";
+      document.getElementById("download-bar").style.display = "flex";
+    }
+
+    // Errors
+    if (errors.length) {
+      document.getElementById("error-list").innerHTML =
+        errors.map(e => `<div class="error-item">✕ ${e.file} — ${e.error}</div>`).join("");
+      document.getElementById("error-section").style.display = "block";
+    }
+  }
+
+  // ── DOWNLOAD EXCEL ────────────────────────────────────────────────────────
+  document.getElementById("dl-excel").addEventListener("click", () => {
+    if (!extractedData.length) return;
+    const ws = XLSX.utils.json_to_sheet(extractedData.map(r => {
+      const obj = {};
+      COLUMNS.forEach(c => { obj[COL_LABELS[c] || c] = r[c] || ""; });
+      return obj;
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Orders");
+    XLSX.writeFile(wb, `amazon_orders_${today()}.xlsx`);
+  });
+
+  // ── DOWNLOAD CSV ──────────────────────────────────────────────────────────
+  document.getElementById("dl-csv").addEventListener("click", () => {
+    if (!extractedData.length) return;
+    const header = COLUMNS.map(c => COL_LABELS[c] || c).join(",");
+    const rows   = extractedData.map(r =>
+      COLUMNS.map(c => `"${(r[c] || "").replace(/"/g, '""')}"`).join(",")
+    );
+    const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `amazon_orders_${today()}.csv`;
+    a.click();
+  });
+
+  // ── UTILS ─────────────────────────────────────────────────────────────────
+  function today() {
+    return new Date().toISOString().slice(0,10).replace(/-/g,"");
+  }
+
+  document.getElementById("ts").textContent =
+    new Date().toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" });
+</script>
+</body>
+</html>
