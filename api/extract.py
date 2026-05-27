@@ -17,8 +17,8 @@ app.add_middleware(
 
 # ─── HELPERS ─────────────────────────────────────────────────────────────────
 
-def find(pattern, text, group=1, default=""):
-    m = re.search(pattern, text, re.IGNORECASE)
+def find(pattern, text, group=1, default="", flags=0):
+    m = re.search(pattern, text, re.IGNORECASE | flags)
     return m.group(group).strip() if m else default
 
 
@@ -36,78 +36,125 @@ def parse_invoice(filename: str, file_bytes: bytes) -> dict:
     if not text.strip():
         return {"file": filename, "error": "Could not extract text — may be a scanned PDF"}
 
-    data = {}
+    lines = text.split("\n")
+    data  = {}
+    data["file"] = filename
 
-    # ── File & Order ─────────────────────────────────────────────────────────
-    data["file"]       = filename
-    data["order_id"]   = find(r"Order\s*(?:Number|ID|#)[:\s]+([A-Z0-9\-]+)", text)
-    data["order_date"] = find(r"Order\s*Date[:\s]+([\d]{1,2}[\/\-\.]\w+[\/\-\.]\d{2,4})", text)
-    data["order_time"] = find(r"Order\s*(?:Date|Time).*?(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM|IST)?)", text)
-    data["invoice_id"] = find(r"Invoice\s*(?:Number|No\.?)\s*[:\s]+([A-Z0-9\-\/]+)", text)
+    # ── Order Info ───────────────────────────────────────────────────────────
+    data["order_id"]     = find(r"Order Number:\s*([A-Z0-9\-]+)", text)
+    data["order_date"]   = find(r"Order Date:\s*([\d.\/\-]+)", text)
+    data["invoice_id"]   = find(r"Invoice Number\s*:\s*([A-Z0-9\-]+)", text)
+    data["invoice_date"] = find(r"Invoice Date\s*:\s*([\d.\/\-]+)", text)
+
+    # ── Time from payment block ──────────────────────────────────────────────
+    dt = re.search(r"Date & Time:\s*([\d/]+),\s*([\d:]+)", text)
+    data["order_time"] = dt.group(2).strip() if dt else ""
 
     # ── Customer Name ────────────────────────────────────────────────────────
-    # Try billing address block first line
-    data["customer_name"] = (
-        find(r"(?:Billing\s*Address|Bill\s*To)\s*[:\-]?\s*\n\s*([^\n]+)", text)
-        or find(r"(?:Sold\s*To|Customer\s*Name)[:\s]+([^\n]+)", text)
-    )
-
-    # ── Email ────────────────────────────────────────────────────────────────
-    data["email"] = find(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", text, group=0)
-
-    # ── Mobile ───────────────────────────────────────────────────────────────
-    data["mobile"] = (
-        find(r"(?:Mobile|Phone|Contact)[:\s]+(\+?[\d\s\-]{10,14})", text)
-        or find(r"(?<!\d)(\+91[\s\-]?\d{10}|\b[6-9]\d{9}\b)", text)
-    )
-
-    # ── Full Address (billing) ───────────────────────────────────────────────
-    # Capture 3 lines after billing address name
-    billing_match = re.search(
-        r"(?:Billing\s*Address|Bill\s*To)\s*[:\-]?\s*\n\s*[^\n]+\n([^\n]+)\n([^\n]+)\n?([^\n]*)",
-        text, re.IGNORECASE
-    )
-    if billing_match:
-        parts = [g.strip() for g in billing_match.groups() if g and g.strip()]
-        data["address"] = ", ".join(parts)
+    # PDF renders two columns on one line:
+    # "Diabliss Consumer Products Pvt Ltd   Syeda Fatima"
+    # Strip seller name (everything up to Pvt Ltd / Ltd)
+    for i, l in enumerate(lines):
+        if "Billing Address" in l:
+            name_line = lines[i + 1] if i + 1 < len(lines) else ""
+            name = re.sub(
+                r"^.*?(?:Pvt\.?\s*Ltd\.?|Ltd\.?)\s+", "",
+                name_line, flags=re.IGNORECASE
+            ).strip()
+            data["customer_name"] = name if name else name_line.strip()
+            break
     else:
-        data["address"] = find(r"(?:Address)[:\s]+([^\n]+)", text)
+        data["customer_name"] = ""
 
-    data["city"]    = find(r"(?:,\s*)([A-Za-z\s]+?)\s*[-–]\s*\d{6}", text)
-    data["state"]   = find(r"(?:State[:\s]+)([A-Za-z\s]+?)(?:\n|,|\d)", text)
-    data["pincode"] = find(r"\b(\d{6})\b", text)
+    # ── Email & Mobile ───────────────────────────────────────────────────────
+    # Amazon invoices don't expose these — kept for completeness
+    data["email"]  = find(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", text, group=0)
+    data["mobile"] = find(r"(?:Mobile|Phone|Contact)[:\s]+(\+?[\d\s\-]{10,14})", text) or \
+                     find(r"(?<!\d)(\+91[\s\-]?\d{10}|\b[6-9]\d{9}\b)", text)
+
+    # ── Address (billing) ────────────────────────────────────────────────────
+    # Line layout (two-column PDF):
+    #   i+1: "Seller Name     Customer Name"
+    #   i+2: "* Seller St     Customer Street"
+    #   i+3: "Seller City,ST  CUSTOMER CITY, STATE, PIN"
+    for i, l in enumerate(lines):
+        if "Billing Address" in l:
+            street_line = lines[i + 2] if i + 2 < len(lines) else ""
+            combo_line  = lines[i + 3] if i + 3 < len(lines) else ""
+            # Street: right-column part (after the * seller street)
+            # The billing street is the left-most entry on line i+2
+            data["address"] = street_line.lstrip("* ").strip()
+            # City/State/PIN: pattern "CITY, STATE, 6DIGITS" appears in combo_line
+            csp = re.search(
+                r"([A-Z]{2}[A-Z ]+),\s*([A-Z]{2}[A-Z ]+),\s*(\d{6})",
+                combo_line
+            )
+            if csp:
+                data["city"]    = csp.group(1).strip()
+                data["state"]   = csp.group(2).strip()
+                data["pincode"] = csp.group(3).strip()
+            else:
+                data["city"]    = ""
+                data["state"]   = find(r"Place of supply:\s*([A-Z]+)", text)
+                data["pincode"] = find(r"\b(\d{6})\b", combo_line)
+            break
+    else:
+        data["address"] = ""
+        data["city"]    = ""
+        data["state"]   = find(r"Place of supply:\s*([A-Z]+)", text)
+        data["pincode"] = find(r"\b(\d{6})\b", text)
 
     # ── Product ──────────────────────────────────────────────────────────────
-    data["product"] = (
-        find(r"(?:Description|Product\s*Name|Item)[:\s]+([^\n]+)", text)
-        or find(r"(?:^\s*\d+\.\s*)([A-Za-z].*?)(?:\s{2,}|\t)", text)
-    )
-    data["sku"]      = find(r"SKU[:\s]+([A-Z0-9\-]+)", text)
-    data["asin"]     = find(r"ASIN[:\s]+([A-Z0-9]{10})", text)
-    data["quantity"] = find(r"(?:Qty|Quantity)[:\s]+(\d+)", text)
-    data["unit_price"] = find(r"Unit\s*Price[:\s]+[₹Rs\.]*\s*([\d,]+\.?\d*)", text)
+    # First item line starts with "1 ProductName..."
+    prod_m = re.search(r"^1\s+((?:(?!₹).)+)", text, re.MULTILINE)
+    if prod_m:
+        raw = prod_m.group(1).strip()
+        raw = re.sub(r"\s*\|\s*B[A-Z0-9]{9}.*", "", raw)  # cut at ASIN
+        raw = re.sub(r"\s+", " ", raw).strip()
+        data["product"] = raw
+    else:
+        data["product"] = ""
 
-    # ── Financials ───────────────────────────────────────────────────────────
-    data["taxable_amount"] = find(r"(?:Taxable\s*Amount|Sub.?total)[:\s]+[₹Rs\.]*\s*([\d,]+\.?\d*)", text)
-    data["cgst"]           = find(r"CGST[^₹\d]*([\d,]+\.?\d*)", text)
-    data["sgst"]           = find(r"SGST[^₹\d]*([\d,]+\.?\d*)", text)
-    data["igst"]           = find(r"IGST[^₹\d]*([\d,]+\.?\d*)", text)
-    # Total GST = CGST + SGST + IGST
+    # ── ASIN ─────────────────────────────────────────────────────────────────
+    data["asin"] = find(r"\b(B[A-Z0-9]{9})\b", text)
+
+    # ── SKU: line before "HSN:" line ─────────────────────────────────────────
+    sku_m = re.search(r"^([A-Z0-9\-]+)\s*\)\s*\nHSN:", text, re.MULTILINE)
+    data["sku"] = sku_m.group(1).strip() if sku_m else ""
+
+    # ── Quantity & Unit Price ─────────────────────────────────────────────────
+    qty_price = re.search(r"₹([\d,]+\.?\d*)\s+(\d+)\s+₹[\d,]+\.?\d*", text)
+    data["unit_price"] = qty_price.group(1).strip() if qty_price else ""
+    data["quantity"]   = qty_price.group(2).strip() if qty_price else ""
+
+    # ── Tax ──────────────────────────────────────────────────────────────────
+    data["cgst"] = find(r"[\d.]+%CGST\s+₹([\d,]+\.?\d*)", text)
+    data["sgst"] = find(r"[\d.]+%SGST\s+₹([\d,]+\.?\d*)", text)
+    data["igst"] = find(r"[\d.]+%IGST\s+₹([\d,]+\.?\d*)", text)
+
     try:
-        cgst = float(data["cgst"].replace(",","")) if data["cgst"] else 0
-        sgst = float(data["sgst"].replace(",","")) if data["sgst"] else 0
-        igst = float(data["igst"].replace(",","")) if data["igst"] else 0
-        total_gst = cgst + sgst + igst
+        total_gst = (
+            float(data["cgst"].replace(",", "") or 0) +
+            float(data["sgst"].replace(",", "") or 0) +
+            float(data["igst"].replace(",", "") or 0)
+        )
         data["total_gst"] = f"{total_gst:.2f}" if total_gst else ""
     except Exception:
         data["total_gst"] = ""
 
-    data["order_value"]  = find(r"(?:Grand\s*Total|Total\s*Amount)[:\s]+[₹Rs\.]*\s*([\d,]+\.?\d*)", text)
-    data["payment_mode"] = find(r"Payment\s*(?:Mode|Method)[:\s]+([^\n]+)", text)
+    # ── Order Value & Payment Mode ────────────────────────────────────────────
+    # Payment footer line: "TXN_ID hrs 289.00 UPI"
+    pay_line = re.search(
+        r"^[A-Za-z0-9]+\s+hrs\s+([\d.]+)\s+(\w+)\s*$",
+        text, re.MULTILINE
+    )
+    data["order_value"]  = pay_line.group(1).strip() if pay_line else \
+                           find(r"TOTAL:.*?₹[\d.]+₹([\d.]+)", text)
+    data["payment_mode"] = pay_line.group(2).strip() if pay_line else ""
 
     # ── GST Numbers ──────────────────────────────────────────────────────────
+    data["seller_gstin"] = find(r"GST Registration No:\s*([0-9A-Z]{15})", text)
     data["buyer_gstin"]  = find(r"Buyer\s*GSTIN[:\s]+([0-9A-Z]{15})", text)
-    data["seller_gstin"] = find(r"(?:Seller|Supplier)\s*GSTIN[:\s]+([0-9A-Z]{15})", text)
 
     return data
 
