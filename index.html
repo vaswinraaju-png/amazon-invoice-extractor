@@ -435,21 +435,22 @@
   let extractedData = [];
 
   const COLUMNS = [
-    "file","order_id","invoice_id","invoice_date",
-    "customer_name","billing_city","billing_state","billing_pincode",
-    "shipping_city","shipping_pincode",
-    "product_name","sku","asin","qty","unit_price",
-    "taxable_amount","cgst","sgst","igst","total_amount",
+    "file","order_id","order_date","order_time",
+    "customer_name","email","mobile",
+    "address","city","state","pincode",
+    "product","sku","asin","quantity","unit_price",
+    "taxable_amount","cgst","sgst","igst","total_gst","order_value",
     "payment_mode","buyer_gstin","seller_gstin"
   ];
 
   const COL_LABELS = {
-    file:"File", order_id:"Order ID", invoice_id:"Invoice ID", invoice_date:"Date",
-    customer_name:"Customer", billing_city:"City", billing_state:"State", billing_pincode:"PIN",
-    shipping_city:"Ship City", shipping_pincode:"Ship PIN",
-    product_name:"Product", sku:"SKU", asin:"ASIN", qty:"Qty", unit_price:"Unit Price",
-    taxable_amount:"Taxable", cgst:"CGST", sgst:"SGST", igst:"IGST", total_amount:"Total",
-    payment_mode:"Payment", buyer_gstin:"Buyer GSTIN", seller_gstin:"Seller GSTIN"
+    file:"File", order_id:"Order ID", order_date:"Order Date", order_time:"Time",
+    customer_name:"Customer Name", email:"Email", mobile:"Mobile",
+    address:"Address", city:"City", state:"State", pincode:"Pincode",
+    product:"Product", sku:"SKU", asin:"ASIN", quantity:"Qty", unit_price:"Unit Price",
+    taxable_amount:"Taxable Amt", cgst:"CGST", sgst:"SGST", igst:"IGST",
+    total_gst:"Total GST", order_value:"Order Value",
+    payment_mode:"Payment Mode", buyer_gstin:"Buyer GSTIN", seller_gstin:"Seller GSTIN"
   };
 
   // ── ELEMENTS ─────────────────────────────────────────────────────────────
@@ -549,7 +550,7 @@
     const errors = json.errors || [];
 
     // Stats
-    const totalAmt = data.reduce((s, r) => s + parseFloat((r.total_amount || "0").replace(/,/g,"")) || 0, 0);
+    const totalAmt = data.reduce((s, r) => s + parseFloat((r.order_value || "0").replace(/,/g,"")) || 0, 0);
     const states   = new Set(data.map(r => r.billing_state).filter(Boolean)).size;
 
     document.getElementById("stat-extracted").textContent = data.length;
